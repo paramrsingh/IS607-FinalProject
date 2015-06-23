@@ -1,0 +1,200 @@
+---
+title: "IS607 - Final Project"
+author: "Param Singh"
+date: "June 21, 2015"
+output: html_document
+---
+<br>
+<b>Proposal: The Starbucks Effect</b><br>
+
+The state of the residential real estate market has been historically utilized as a macroeconomic indicator of the health of the economy as a nation. Initial analysis has concluded that proving this correlation is a complex and error-prone measure, where accurate real estate listing information is difficult to come by.
+
+In Stan Humphries and Spencer Rascoff’s “Zillow Talk: The New Rules of Real Estate” they discuss a more specific correlation between the increase of real estate prices and proximity to the popular Starbucks chain of coffee shops.
+
+The scope of this project will attempt to prove the same positive correlation between increased residential real estate prices and proximity to a Starbucks described by Stan Humphries and Spencer Rascoff in their book utilizing the same data source, and comparison to another popular chain, Dunkin Donuts.
+
+
+Data Sources used:
+<ul>
+<li>Socrata – Starbucks locations in the US (https://opendata.socrata.com/Business/All-Starbucks-Locations-in-the-US-Map/ddym-zvjk)</li>
+<li>Oddity Software – Dunkin Donuts locations (http://www.odditysoftware.com/blog/free-dunkin-donuts-database-and-developer-resources_47.html)</li>
+<li>Zillow (http://www.zillow.com/research/data/) <img src="http://www.zillow.com/widgets/GetVersionedResource.htm?path=/static/logos/Zillowlogo_150x40.gif" width="150" height="40" alt="Zillow Real Estate Search" /></li>
+</ul>
+
+<br>
+<b>Data Acquistion</b><br>
+
+Internet research yielded two primary sources of location data in csv format. These were locations of Starbucks and Dunkin Donuts in the US. Each data set contained its own specific variables, or columns, with multiple observations but there were common variables that allowed for geolocation and identifying specific addresses. The median sale price data was a little more a challenge to find (and trust) but I settled on using csv data for historical median sale price data per zip code available from Zillow. The following code loads these three files:
+```{r load_data}
+# Starbucks locations
+sbux_loc_raw_df <- read.csv("All_Starbucks_Locations_in_the_US_-_Map.csv")
+
+# Dunkin Donuts locations
+dunkin_loc_raw_df <- read.csv("dunkin_donuts.csv")
+
+# Zillow Median Sale Price, by zip code
+zillow_median_raw_df <- read.csv("Zip_MedianSoldPrice_AllHomes.csv")
+```
+```{r examine_data, results='hide'}
+# Optional step to examine the loaded data
+str(sbux_loc_raw_df)
+head(dunkin_loc_raw_df)
+summary(zillow_median_raw_df)
+```
+<br>
+<b>Transformations and Cleanup</b><br>
+The sourced CSV datasets that I found are robust, but there are some variables - columns - that were uncessary for the scope of this project. I chose to clean up these data frames prior to the analysis to reduce complexity and processing time. After this initial paring, I had to merge - essentially a join - with the Zillow data to get the historical pricing information for those locations.
+```{r transform_data, results='hide', message=FALSE}
+require (stringr)
+require (dplyr)
+# Starbucks locations - originally 23 variables pared down to 5
+sbux_loc_raw_df <- subset(sbux_loc_raw_df, select = c(Street.Line.1,  Street.Line.2, City, State, Zip))
+# trim Zip to only the first 5 digits as the median price data is only available historically at this level
+sbux_loc_raw_df$Zip <- str_sub(sbux_loc_raw_df$Zip, 1, 5)
+
+# Dunkin Donuts loations - originally 22 variables pared down to 4
+dunkin_loc_raw_df <- subset(dunkin_loc_raw_df, select =c(e_address, e_city, e_state, e_postal))
+
+# Rename the 'RegionName' variable in the Zillow data frame to 'Zip' for merge
+colnames(zillow_median_raw_df)[1] <- "Zip"
+
+# Match the starbucks zip locations with the Zillow data into a single data frame
+sbux_byzip <- merge(zillow_median_raw_df, sbux_loc_raw_df)
+
+# Remove extraneous columns 
+sbux_byzip <- subset(sbux_byzip, select = -c(CountyName))
+
+# Remove repeated rows and other unecessary columns
+sbux_byzip <- distinct(sbux_byzip)
+
+# Similar operations on the Dunkin Donuts locations
+colnames(dunkin_loc_raw_df)[4] <- "Zip"
+dunkin_byzip <- merge(zillow_median_raw_df, dunkin_loc_raw_df)
+dunkin_byzip <- subset(dunkin_byzip, select = -c(CountyName))
+dunkin_byzip <- distinct(dunkin_byzip)
+```
+
+```{r na_data}
+# Remove missing observations - while partial data can sometimes be useful in this context we need full historical data to prove or disprove the correlation
+sbux_byzip <- na.omit(sbux_byzip)
+dunkin_byzip <- na.omit(dunkin_byzip)
+
+# get x-axis values which are column names in the data frame
+xvalues <- colnames(sbux_byzip)
+
+# Remove the vector entries that we don't want and perform some minor cleanup
+badx <- c("Zip", "City", "State", "Metro", "Street.Line.1", "Street.Line.2")
+xvalues <- xvalues[!xvalues %in% badx]
+xvalues <- str_sub(xvalues, 2, 8)
+
+# Pick 4 sample random locations from the data frame and perform additional cleanup
+sbux_sample <- sbux_byzip[sample(nrow(sbux_byzip), 4), ]
+
+sample1 <- as.numeric(sbux_sample[1,])
+remove <- c(1,2,3,4,234,235)
+sample1 <- sample1[-remove]
+
+sample2 <- as.numeric(sbux_sample[2,])
+sample2 <- sample2[-remove]
+
+sample3 <- as.numeric(sbux_sample[3,])
+sample3 <- sample3[-remove]
+
+sample4 <- as.numeric(sbux_sample[4,])
+sample4 <- sample4[-remove]
+
+
+# Similar operations for Dunkin
+dunkin_sample <- dunkin_byzip[sample(nrow(dunkin_byzip), 4), ]
+
+dsample1 <- as.numeric(dunkin_sample[1,])
+remove <- c(1,2,3,4, 234, 235, 236)
+dsample1 <- dsample1[-remove]
+
+dsample2 <- as.numeric(dunkin_sample[2,])
+dsample2 <- dsample2[-remove]
+
+dsample3 <- as.numeric(dunkin_sample[3,])
+dsample3 <- dsample3[-remove]
+
+dsample4 <- as.numeric(dunkin_sample[4,])
+dsample4 <- dsample4[-remove]
+```
+<br>
+<b>Analysis and Presentation</b><br>
+Now that the samples all have continuous and clean data we can examine on a plot and visually examine trends
+```{r analysis, message=FALSE, warning=FALSE}
+require(ggplot2)
+require(grid)
+require(gridExtra)
+
+# Create data frames for use with ggplot
+star1 <- data.frame(cbind(xvalues, sample1))
+star2 <- data.frame(cbind(xvalues, sample2))
+star3 <- data.frame(cbind(xvalues, sample3))
+star4 <- data.frame(cbind(xvalues, sample4))
+
+dunk1 <- data.frame(cbind(xvalues, dsample1))
+dunk2 <- data.frame(cbind(xvalues, dsample2))
+dunk3 <- data.frame(cbind(xvalues, dsample3))
+dunk4 <- data.frame(cbind(xvalues, dsample4))
+
+# Visualize and plot
+s1 <- ggplot(star1, aes(x=xvalues, y=sample1)) + geom_point()
+s2 <- ggplot(star2, aes(x=xvalues, y=sample2)) + geom_point()
+s3 <- ggplot(star3, aes(x=xvalues, y=sample3)) + geom_point()
+s4 <- ggplot(star4, aes(x=xvalues, y=sample4)) + geom_point()
+s1 <- s1 + scale_x_discrete(limit = c("1996.04", "1998.04", "2000.04", "2002.04","2004.04","2006.04", "2008.04","2010.04", "2015.04")) + scale_y_discrete(breaks=NULL)
+s2 <- s2 + scale_x_discrete(limit = c("1996.04", "1998.04", "2000.04", "2002.04","2004.04","2006.04", "2008.04","2010.04", "2015.04")) + scale_y_discrete(breaks=NULL)
+s3 <- s3 + scale_x_discrete(limit = c("1996.04", "1998.04", "2000.04", "2002.04","2004.04","2006.04", "2008.04","2010.04", "2015.04")) + scale_y_discrete(breaks=NULL)
+s4 <- s4 + scale_x_discrete(limit = c("1996.04", "1998.04", "2000.04", "2002.04","2004.04","2006.04", "2008.04","2010.04", "2015.04")) + scale_y_discrete(breaks=NULL)
+grid.arrange(s1, s2, s3, s4, ncol=2)
+```
+<br>
+As you can observe with the plots above there is a general positive increase in price (y-axes) as time progresses for each of these four random sample locations where there is a Starbucks. Now on to Dunkin Donuts locations.
+<br>
+```{r, message=FALSE, warning=FALSE}
+d1 <- ggplot(star1, aes(x=xvalues, y=dsample1)) + geom_point()
+d2 <- ggplot(star2, aes(x=xvalues, y=dsample2)) + geom_point()
+d3 <- ggplot(star3, aes(x=xvalues, y=dsample3)) + geom_point()
+d4 <- ggplot(star4, aes(x=xvalues, y=dsample4)) + geom_point()
+d1 <- d1 + scale_x_discrete(limit = c("1996.04", "1998.04", "2000.04", "2002.04","2004.04","2006.04", "2008.04","2010.04", "2015.04")) + scale_y_discrete(breaks=NULL)
+d2 <- d2 + scale_x_discrete(limit = c("1996.04", "1998.04", "2000.04", "2002.04","2004.04","2006.04", "2008.04","2010.04", "2015.04")) + scale_y_discrete(breaks=NULL)
+d3 <- d3 + scale_x_discrete(limit = c("1996.04", "1998.04", "2000.04", "2002.04","2004.04","2006.04", "2008.04","2010.04", "2015.04")) + scale_y_discrete(breaks=NULL)
+d4 <- d4 + scale_x_discrete(limit = c("1996.04", "1998.04", "2000.04", "2002.04","2004.04","2006.04", "2008.04","2010.04", "2015.04")) + scale_y_discrete(breaks=NULL)
+grid.arrange(d1, d2, d3, d4) 
+```
+<br>
+There is a similiarly observable trend with Dunkin' Donuts, but with apparently less jitter in the observations and smoother plots. This could be attributed to the local real estate market where these samples are sourced, if they exhibited less impact with the crash of 2008 and had stable growth that would explain some of these results (e.g. sample 3), the remainder of these samples are similar in shape to the Starbucks samples. 
+<br><br>
+
+<b>Conclusions</b><br>
+Based on the data sourced and the analysis conducted it is acceptable to say that there is a correlation between location to a Starbucks and an increase in real estate sale price, and the same can also be said for Dunkin Donuts. 
+
+It is worth noting that the shapes of almost all of these sample plots, especially the ones that dip in 2008 and then recover, follow the general shape and increase of the real estate market as a whole. This can be seen in the Zillow overall Median Price graph available on their website for the same time period, as well as with the Case-Shiller index.
+
+As mentioned in their book Stan Humphries and Spencer Rascoff mention that Starbucks has teams of employees who have finding store locations down to a science that is deliberate, and judging by the company's success, very effective. It is unsurprising for the claim of the "Starbucks Effect", at worse case you'll break even with the market as a whole - if you work at a hedge fund this would be considered a good return.
+
+It is also worth noting that "The Starbucks Effect" can be disproved just as easily because of the face of the geography that the company covers. Not all of their locations can guarantee big returns on real estate, an example of this would be a location in suburban Arizona and one in metropolitan Chicago - those real estate markets are very different.
+<br><br>
+
+<b>Observations</b><br>
+Finding accurate real estate price listing data is difficult. This is due in part to the rapid rate of turnover, the wide variety of sources and methods used to capture and store this data, and some markets (e.g. New York City) are just very unique. Humphries and Rascoff actually make a point to call this out in their book; their full time jobs at Zillow are occupied with real estate data analysis and this was important enough to call out as it does break some of the more tradtiional "rules" and trends seen with real estate throughout the country. In the fallout of 2008 New York City was one of the few markets to start recovery well ahead of other major cities due to the constant demand and lack of supply.
+
+Zillow index data is aggregated, but with their own methodology so it is difficult to ascertain if there were errors in its sourcing, collection, aggregation, and indexing methods. I believe that its popularity is a testament to its reliability, as well as comparison to a few Case-Shiller indexes, but it is easy to make the other side of the argument trying to disprove something like correlation; caveat emptor!
+
+In their book and set of articles on the Starbucks Effect Humphries and Rascoff were able to limit their historical median pricing data down to approximately half a mile on average from the location of a given Starbucks. Working with their data and API I had capability for a "neighborhood" level but quickly found out that this is a somewhat non-standard measurement and requires geospatial polygons for mapping a neighborhood and then limiting the source of the median pricing data.
+
+With limitations on access to that raw data that the Zillow employees have I had to limit to what I had available, the zip code level. The zip code level isn't necessarily too wide a measure itself as across the country there is wide geographic distribution so it would even things out when you are comparing suburban, and dense cities all together.
+
+<br>
+<b>Project checklist:</b><br>
+<ul>
+<li>Proposal</li>
+<li>Data Science Workflow: Hadley-Wickham's Grammar of Data Science</li>
+<li>Multiple CSV data sources</li>
+<li>Multiple sets of Data Transformation and Cleansing</li>
+<li>Statistical Analysis/Data Visualization</li>
+<li>Non-curriculum feature: String manipulation and ggplot2</li>
+<li>Presentation: Available on request</li>
+</ul>
